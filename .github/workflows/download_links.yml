@@ -6,20 +6,19 @@ on:
       - main
   schedule:
     - cron: '0 0 * * *'  # This will run the action daily at midnight UTC
-permissions:
-  contents: write
+
 jobs:
   download-links:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v2
 
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget jq
+        sudo apt-get install -y wget jq libxml2-utils
 
     - name: Download and process links
       run: |
@@ -29,12 +28,13 @@ jobs:
         # Download the webpage
         curl -s https://developer.ukg.com/wfm/openapi/ -o page.html
 
-        # Extract links and their text
-        grep -oP '(?<=href=")[^"]*.json(?=")' page.html | while read -r url; do
-          # Extract the link text
-          link_text=$(grep -oP "(?<=<a href=\"$url\">)[^<]*(?=</a>)" page.html)
+        # Extract links and their text using xmllint
+        xmllint --html --xpath '//a[contains(@href, ".json")]' page.html 2>/dev/null | \
+        sed 's/<a /\n<a /g' | \
+        grep -oP '(?<=href=")[^"]*.json(?=")|(?<=>)[^<]*(?=</a>)' | \
+        paste - - | while IFS="$(printf '\t')" read -r url text; do
           # Sanitize the link text to use as filename
-          sanitized_text=$(echo "$link_text" | tr -cd '[:alnum:]')
+          sanitized_text=$(echo "$text" | tr -cd '[:alnum:]')
           # Download the file and save it with the sanitized link text as filename
           wget -q "$url" -O "downloaded_files/${sanitized_text}.json"
         done
